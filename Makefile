@@ -10,7 +10,7 @@ build: mac windows linux
 dev: clean fmt mac copy
 
 copy:
-	tar -xvf bin/terraform-provider-alicloud_darwin-amd64.tgz && mv bin/terraform-provider-alicloud $(shell dirname `which terraform`)
+	tar -xvf bin/terraform-provider-alicloud_darwin-amd64.tgz && mv bin/terraform-provider-alicloud ~/.terraform.d/plugins
 
 test: vet fmtcheck errcheck
 	TF_ACC=1 go test -v ./alicloud -run=TestAccAlicloud -timeout=180m -parallel=4

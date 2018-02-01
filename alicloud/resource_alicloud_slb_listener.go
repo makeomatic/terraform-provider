@@ -208,6 +208,51 @@ func resourceAliyunSlbListener() *schema.Resource {
 				Optional:         true,
 				DiffSuppressFunc: sslCertificateIdDiffSuppressFunc,
 			},
+
+			// server groups
+			"v_server_group": &schema.Schema{
+				Type: schema.TypeString,
+				ValidateFunc: validateAllowedStringValue([]string{
+					string(slb.OnFlag),
+					string(slb.OffFlag)}),
+				Optional:         true,
+				Default:          slb.OffFlag,
+				DiffSuppressFunc: vServerGroupDiffSuppressFunc,
+			},
+			"v_server_group_id": &schema.Schema{
+				Type:             schema.TypeString,
+				Optional:         true,
+				DiffSuppressFunc: vServerGroupDiffSuppressFunc,
+			},
+
+			// x-forwarder-** options
+			"x_forwarded_for_slb_id": &schema.Schema{
+				Type: schema.TypeString,
+				ValidateFunc: validateAllowedStringValue([]string{
+					string(slb.OnFlag),
+					string(slb.OffFlag)}),
+				Optional:         true,
+				Default:          slb.OffFlag,
+				DiffSuppressFunc: xForwardedForSlbIdDiffSuppressFunc,
+			},
+			"x_forwarded_for_slb_ip": &schema.Schema{
+				Type: schema.TypeString,
+				ValidateFunc: validateAllowedStringValue([]string{
+					string(slb.OnFlag),
+					string(slb.OffFlag)}),
+				Optional:         true,
+				Default:          slb.OffFlag,
+				DiffSuppressFunc: xForwardedForSlbIpDiffSuppressFunc,
+			},
+			"x_forwarded_for_proto": &schema.Schema{
+				Type: schema.TypeString,
+				ValidateFunc: validateAllowedStringValue([]string{
+					string(slb.OnFlag),
+					string(slb.OffFlag)}),
+				Optional:         true,
+				Default:          slb.OffFlag,
+				DiffSuppressFunc: xForwardedForProtoDiffSuppressFunc,
+			},
 		},
 	}
 }
@@ -410,6 +455,31 @@ func resourceAliyunSlbListenerUpdate(d *schema.ResourceData, meta interface{}) e
 		}
 	}
 
+	if d.HasChange("v_server_group") {
+		d.SetPartial("v_server_group")
+		update = true
+	}
+
+	if d.HasChange("v_server_group_id") {
+		d.SetPartial("v_server_group_id")
+		update = true
+	}
+
+	if d.HasChange("x_forwarded_for_slb_id") {
+		d.SetPartial("x_forwarded_for_slb_id")
+		update = true
+	}
+
+	if d.HasChange("x_forwarded_for_slb_ip") {
+		d.SetPartial("x_forwarded_for_slb_ip")
+		update = true
+	}
+
+	if d.HasChange("x_forwarded_for_proto") {
+		d.SetPartial("x_forwarded_for_proto")
+		update = true
+	}
+
 	// tcp and udp
 	if d.HasChange("persistence_timeout") {
 		tcpArgs.PersistenceTimeout = d.Get("persistence_timeout").(int)
@@ -506,15 +576,19 @@ func resourceAliyunSlbListenerDelete(d *schema.ResourceData, meta interface{}) e
 }
 
 func buildHttpListenerType(d *schema.ResourceData) (slb.HTTPListenerType, error) {
-
 	httpType := slb.HTTPListenerType{
-		LoadBalancerId:    d.Get("load_balancer_id").(string),
-		ListenerPort:      d.Get("frontend_port").(int),
-		BackendServerPort: d.Get("backend_port").(int),
-		Bandwidth:         d.Get("bandwidth").(int),
-		StickySession:     slb.FlagType(d.Get("sticky_session").(string)),
-		HealthCheck:       slb.FlagType(d.Get("health_check").(string)),
+		LoadBalancerId:      d.Get("load_balancer_id").(string),
+		ListenerPort:        d.Get("frontend_port").(int),
+		BackendServerPort:   d.Get("backend_port").(int),
+		Bandwidth:           d.Get("bandwidth").(int),
+		StickySession:       slb.FlagType(d.Get("sticky_session").(string)),
+		HealthCheck:         slb.FlagType(d.Get("health_check").(string)),
+		VServerGroup:        slb.FlagType(d.Get("v_server_group").(string)),
+		XForwardedFor_SLBID: slb.FlagType(d.Get("v_server_group").(string)),
+		XForwardedFor_SLBIP: slb.FlagType(d.Get("v_server_group").(string)),
+		XForwardedFor_proto: slb.FlagType(d.Get("v_server_group").(string)),
 	}
+
 	if httpType.StickySession == slb.OnFlag {
 		if sessionType, ok := d.GetOk("sticky_session_type"); !ok || sessionType.(string) == "" {
 			return httpType, fmt.Errorf("'sticky_session_type': required field is not set when the StickySession is %s.", slb.OnFlag)
@@ -522,6 +596,7 @@ func buildHttpListenerType(d *schema.ResourceData) (slb.HTTPListenerType, error)
 			httpType.StickySessionType = slb.StickySessionType(sessionType.(string))
 
 		}
+
 		if httpType.StickySessionType == slb.InsertStickySessionType {
 			if timeout, ok := d.GetOk("cookie_timeout"); !ok || timeout == 0 {
 				return httpType, fmt.Errorf("'cookie_timeout': required field is not set when the StickySession is %s "+
@@ -538,6 +613,7 @@ func buildHttpListenerType(d *schema.ResourceData) (slb.HTTPListenerType, error)
 			}
 		}
 	}
+
 	if httpType.HealthCheck == slb.OnFlag {
 		httpType.HealthCheckURI = d.Get("health_check_uri").(string)
 		if port, ok := d.GetOk("health_check_connect_port"); !ok || port.(int) == 0 {
@@ -551,26 +627,44 @@ func buildHttpListenerType(d *schema.ResourceData) (slb.HTTPListenerType, error)
 		httpType.HealthCheckInterval = d.Get("health_check_interval").(int)
 		httpType.HealthCheckHttpCode = slb.HealthCheckHttpCodeType(d.Get("health_check_http_code").(string))
 	}
+
+	if httpType.VServerGroup == slb.OnFlag {
+		httpType.VServerGroupId = d.Get("v_server_group_id").(string)
+	}
+
 	return httpType, nil
 }
 
 func buildTcpListenerArgs(d *schema.ResourceData) slb.CreateLoadBalancerTCPListenerArgs {
-
-	return slb.CreateLoadBalancerTCPListenerArgs(slb.TCPListenerType{
+	tcpType := slb.CreateLoadBalancerTCPListenerArgs(slb.TCPListenerType{
 		LoadBalancerId:    d.Get("load_balancer_id").(string),
 		ListenerPort:      d.Get("frontend_port").(int),
 		BackendServerPort: d.Get("backend_port").(int),
 		Bandwidth:         d.Get("bandwidth").(int),
+		VServerGroup:      slb.FlagType(d.Get("v_server_group").(string)),
 	})
+
+	if tcpType.VServerGroup == slb.OnFlag {
+		tcpType.VServerGroupId = d.Get("v_server_group_id").(string)
+	}
+
+	return tcpType
 }
-func buildUdpListenerArgs(d *schema.ResourceData) slb.CreateLoadBalancerUDPListenerArgs {
 
-	return slb.CreateLoadBalancerUDPListenerArgs(slb.UDPListenerType{
+func buildUdpListenerArgs(d *schema.ResourceData) slb.CreateLoadBalancerUDPListenerArgs {
+	udpType := slb.CreateLoadBalancerUDPListenerArgs(slb.UDPListenerType{
 		LoadBalancerId:    d.Get("load_balancer_id").(string),
 		ListenerPort:      d.Get("frontend_port").(int),
 		BackendServerPort: d.Get("backend_port").(int),
 		Bandwidth:         d.Get("bandwidth").(int),
+		VServerGroup:      slb.FlagType(d.Get("v_server_group").(string)),
 	})
+
+	if udpType.VServerGroup == slb.OnFlag {
+		udpType.VServerGroupId = d.Get("v_server_group_id").(string)
+	}
+
+	return udpType
 }
 
 func parseListenerId(d *schema.ResourceData, meta interface{}) (string, string, int, error) {
@@ -678,6 +772,21 @@ func readListener(d *schema.ResourceData, listen interface{}) {
 	}
 	if val := v.FieldByName("ServerCertificateId"); val.IsValid() {
 		d.Set("ssl_certificate_id", val.Interface().(string))
+	}
+	if val := v.FieldByName("VServerGroupId"); val.IsValid() {
+		d.Set("v_server_group_id", val.Interface().(string))
+		d.Set("v_server_group", string(slb.OnFlag))
+	} else {
+		d.Set("v_server_group", string(slb.OffFlag))
+	}
+	if val := v.FieldByName("XForwardedFor_SLBID"); val.IsValid() {
+		d.Set("x_forwarded_for_slb_id", string(val.Interface().(slb.FlagType)))
+	}
+	if val := v.FieldByName("XForwardedFor_SLBIP"); val.IsValid() {
+		d.Set("x_forwarded_for_slb_ip", string(val.Interface().(slb.FlagType)))
+	}
+	if val := v.FieldByName("XForwardedFor_proto"); val.IsValid() {
+		d.Set("x_forwarded_for_proto", string(val.Interface().(slb.FlagType)))
 	}
 
 	return

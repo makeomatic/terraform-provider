@@ -26,6 +26,34 @@ func stickySessionTypeDiffSuppressFunc(k, old, new string, d *schema.ResourceDat
 	return true
 }
 
+func xForwardedForSlbIdDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if session, ok := d.GetOk("x_forwarded_for_slb_id"); ok && slb.FlagType(session.(string)) == slb.OnFlag {
+		return false
+	}
+	return true
+}
+
+func xForwardedForSlbIpDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if session, ok := d.GetOk("x_forwarded_for_slb_ip"); ok && slb.FlagType(session.(string)) == slb.OnFlag {
+		return false
+	}
+	return true
+}
+
+func xForwardedForProtoDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if session, ok := d.GetOk("x_forwarded_for_proto"); ok && slb.FlagType(session.(string)) == slb.OnFlag {
+		return false
+	}
+	return true
+}
+
+func vServerGroupDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if session, ok := d.GetOk("v_server_group"); ok && slb.FlagType(session.(string)) == slb.OnFlag {
+		return false
+	}
+	return true
+}
+
 func cookieTimeoutDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
 	stickSessionTypeDiff := stickySessionTypeDiffSuppressFunc(k, old, new, d)
 	if session_type, ok := d.GetOk("sticky_session_type"); !stickSessionTypeDiff && ok && slb.StickySessionType(session_type.(string)) == slb.InsertStickySessionType {
